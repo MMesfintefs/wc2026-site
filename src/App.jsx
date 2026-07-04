@@ -18,10 +18,12 @@ function Team({name,score,pen,isW,pct}){
   </div>;
 }
 
-function Card({m,r,i}){
+function Card({m,r,i,onSel}){
   const done=m.winner!=null;
   const adv=m.winner||m.predicted;
-  return <div style={{position:"absolute",left:x(r),top:y(r,i),width:W,height:H,
+  return <div onClick={()=>m.home&&m.away&&onSel(m)}
+    style={{position:"absolute",left:x(r),top:y(r,i),width:W,height:H,
+    cursor:m.home&&m.away?"pointer":"default",
     background:done?C.won:C.card,border:`1px solid ${adv?C.gold+"66":C.border}`,
     borderRadius:8,padding:"5px 8px",boxSizing:"border-box"}}>
     <div style={{fontSize:8,color:C.dim,display:"flex",justifyContent:"space-between"}}>
@@ -35,7 +37,7 @@ function Card({m,r,i}){
   </div>;
 }
 
-function Bracket({b}){
+function Bracket({b,onSel}){
   const rounds=[b.r32,b.r16,b.qf,b.sf,[b.final]];
   const totalH=PAD*2+16*ROW, totalW=x(5);
   const lines=[];
@@ -54,7 +56,55 @@ function Bracket({b}){
   return <div style={{overflow:"auto",border:`1px solid ${C.border}`,borderRadius:10}}>
     <div style={{position:"relative",width:totalW,height:totalH}}>
       <svg width={totalW} height={totalH} style={{position:"absolute",inset:0}}>{lines}</svg>
-      {rounds.map((ms,r)=>ms.map((m,i)=><Card key={m.id} m={m} r={r} i={i}/>))}
+      {rounds.map((ms,r)=>ms.map((m,i)=><Card key={m.id} m={m} r={r} i={i} onSel={onSel}/>))}
+    </div>
+  </div>;
+}
+
+function MatchPage({m,onBack}){
+  const d=m.detail||{};
+  const Bar=({l,v,c})=><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,fontSize:12}}>
+    <span style={{width:120,color:C.dim,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l}</span>
+    <div style={{flex:1,height:9,background:C.card,borderRadius:4}}>
+      <div style={{width:`${Math.min(v,100)}%`,height:"100%",background:c,borderRadius:4}}/></div>
+    <b style={{width:44,textAlign:"right",color:c}}>{v}%</b></div>;
+  return <div style={{maxWidth:680}}>
+    <button onClick={onBack} style={{background:C.card,color:C.text,border:`1px solid ${C.border}`,
+      borderRadius:6,padding:"5px 12px",cursor:"pointer",marginBottom:12}}>← Back to bracket</button>
+    <h2 style={{color:C.gold,margin:"0 0 2px"}}>M{m.id} · {m.home} vs {m.away}</h2>
+    <div style={{fontSize:11,color:C.dim,marginBottom:12}}>{m.date} · {m.status}
+      {m.score&&<b style={{color:C.green}}> · FT {m.score[0]}-{m.score[1]}{m.pens?` (${m.pens[0]}-${m.pens[1]} pens)`:""}</b>}</div>
+
+    {m.pHome!=null&&<>
+      <div style={{color:C.gold,fontWeight:800,fontSize:11,margin:"10px 0 6px"}}>WIN PROBABILITY</div>
+      <Bar l={m.home} v={m.pHome} c={C.green}/>
+      <Bar l={m.away} v={m.pAway} c={C.red}/></>}
+
+    {d.xgHome!=null&&<div style={{color:C.gold,fontWeight:800,fontSize:11,margin:"14px 0 6px"}}>
+      EXPECTED GOALS — {m.home} {d.xgHome} · {d.xgAway} {m.away}</div>}
+
+    {d.topScorelines&&<>
+      <div style={{color:C.gold,fontWeight:800,fontSize:11,margin:"14px 0 6px"}}>MOST LIKELY SCORELINES</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {d.topScorelines.map((s,i)=><div key={i} style={{background:i===0?C.won:C.card,
+          border:`1px solid ${i===0?C.gold:C.border}`,borderRadius:8,padding:"8px 14px",textAlign:"center"}}>
+          <div style={{fontSize:16,fontWeight:800,color:i===0?C.gold:C.text}}>{s.h}–{s.a}</div>
+          <div style={{fontSize:10,color:C.dim}}>{s.p}%</div></div>)}
+      </div></>}
+
+    {d.over25!=null&&<div style={{display:"flex",gap:20,margin:"12px 0",fontSize:12,flexWrap:"wrap"}}>
+      <span>Over 2.5 goals: <b style={{color:C.gold}}>{d.over25}%</b></span>
+      <span>Both teams score: <b style={{color:C.gold}}>{d.btts}%</b></span>
+      <span style={{color:C.dim}}>Elo {d.eloHome} vs {d.eloAway}</span>
+    </div>}
+
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+      {[["scorersHome",m.home],["scorersAway",m.away]].map(([k,t])=>
+        <div key={k}>
+          <div style={{color:C.gold,fontWeight:800,fontSize:11,marginBottom:6}}>LIKELY SCORERS — {t}</div>
+          {(!d[k]||d[k].length===0)&&<div style={{fontSize:11,color:C.dim}}>No player data (enable Kaggle secret)</div>}
+          {(d[k]||[]).map(p=><Bar key={p.player} l={p.player} v={p.pScore} c={C.gold}/>)}
+        </div>)}
     </div>
   </div>;
 }
@@ -62,6 +112,7 @@ function Bracket({b}){
 export default function App(){
   const [d,setD]=useState(null);
   const [tab,setTab]=useState("bracket");
+  const [sel,setSel]=useState(null);
   useEffect(()=>{
     const go=()=>fetch(URL+"?t="+Date.now()).then(r=>r.json()).then(setD).catch(console.error);
     go(); const id=setInterval(go,60000); return ()=>clearInterval(id);
@@ -76,16 +127,18 @@ export default function App(){
     </div>
     <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
       {["bracket","groups","champions","model"].map(t=>
-        <button key={t} onClick={()=>setTab(t)} style={{padding:"6px 14px",borderRadius:6,border:"none",
+        <button key={t} onClick={()=>{setTab(t);setSel(null);}} style={{padding:"6px 14px",borderRadius:6,border:"none",
           cursor:"pointer",fontWeight:700,background:tab===t?C.gold:C.card,
           color:tab===t?C.bg:C.text}}>{t.toUpperCase()}</button>)}
     </div>
 
-    {tab==="bracket"&&<>
-      <div style={{fontSize:10,color:C.dim,marginBottom:6}}>
-        Gold path ➤ = team advancing (actual result if FT/PENS, model pick if PRED). Percentages = win probability for undecided matches.
-      </div>
-      <Bracket b={d.bracket}/></>}
+    {tab==="bracket"&&(sel
+      ? <MatchPage m={sel} onBack={()=>setSel(null)}/>
+      : <>
+        <div style={{fontSize:10,color:C.dim,marginBottom:6}}>
+          Gold path ➤ = team advancing (actual result if FT/PENS, model pick if PRED). Click any match for full prediction detail.
+        </div>
+        <Bracket b={d.bracket} onSel={setSel}/></>)}
 
     {tab==="groups"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:10}}>
       {Object.entries(d.standings).map(([g,rows])=>
